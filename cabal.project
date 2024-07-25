@@ -1,0 +1,7 @@
+packages: .
+
+source-repository-package
+  type: git
+  location: https://github.com/sdzx-1/threepenny-gui.git 
+  tag: d79623c254e4d02bcaca138b6d17e0146f7df233
+
