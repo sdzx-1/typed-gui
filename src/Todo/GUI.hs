@@ -57,7 +57,7 @@ instance MonadFail (UI ps t) where
 mkEntity :: TChan (AnyMsg Todo) -> (Int, Entity) -> UI Todo Main Element
 mkEntity tchan (i, entity@(Entity ttype status context')) = do
   delButton <- UI.button # set UI.text "Delete"
-  on UI.click delButton $ \_ -> sendSomeMsg tchan SMain $ SomeMsg sing (DelectOne i)
+  on UI.click delButton $ \_ -> sendSomeMsg tchan SMain $ SomeMsg sing (DeleteOne i)
   modButton <- UI.button # set UI.text "Modify"
   on UI.click modButton $ \_ -> sendSomeMsg tchan SMain $ SomeMsg sing (EnterModify (i, entity))
   row

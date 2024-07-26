@@ -81,7 +81,7 @@ mainHandler = I.do
         idx <- use (allState . currIndex)
         allState . entityList . at idx .= et
       mainHandler
-    DelectOne idx -> I.do
+    DeleteOne idx -> I.do
       getInput I.>>= \case
         Yes -> I.do
           liftm (allState . entityList . at idx .= Nothing)

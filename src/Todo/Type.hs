@@ -37,7 +37,7 @@ $( singletons
       data Todo
         = Main
         | Add
-        | Delect
+        | Delete
         | Modify
         | Exit
         | Action Todo Todo
@@ -68,7 +68,7 @@ instance StateTransMsg Todo where
     EnterModify
       :: ActionInput Modify
       -> Msg Todo Main (Action Modify Main)
-    DelectOne
+    DeleteOne
       :: Int
       -> Msg Todo Main (AreYouSure Main Main)
     -----------------
