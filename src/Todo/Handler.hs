@@ -31,30 +31,25 @@ import Todo.Common
 import Todo.Type
 import TypedFsm
 
-type Op' to from = Op Todo (AllState Todo TodoList) IO () to from
+type AllSt = AllState Todo TodoList (ActionStMap Todo)
 
-getSt :: Sing (st :: Todo) -> StateT (AllState Todo TodoList) IO (Maybe (InternalSt Todo st))
-getSt st = do
-  dp <- use allInternalStMap
-  case DMap.lookup st dp of
-    Nothing -> pure Nothing
-    Just v -> pure $ Just v
+type Op' to from = Op Todo AllSt IO () to from
 
-putSt :: Sing (st :: Todo) -> (InternalSt Todo st) -> StateT (AllState Todo TodoList) IO ()
+putSt :: Sing (st :: Todo) -> (ActionVal Todo st) -> StateT AllSt IO ()
 putSt st sval =
-  allInternalStMap %= DMap.alter (const (Just sval)) st
+  allOtherState %= DMap.alter (const (Just sval)) st
 
 actionHandler'
   :: forall action to
    . (SingI to, SingI action)
-  => Op Todo (AllState Todo TodoList) IO (Maybe (ActionOutput action)) to (Action action to)
+  => Op Todo AllSt IO (Maybe (ActionOutput action)) to (Action action to)
 actionHandler' =
   getInput I.>>= \case
     SureAction val ->
       getInput I.>>= \case
         Yes -> returnAt (Just val)
         No -> I.do
-          liftm $ putSt @action (sing @action) (InternalSt $ Right val)
+          liftm $ putSt @action (sing @action) (ActionVal $ Right val)
           actionHandler'
     ExitAction -> returnAt Nothing
 
@@ -62,9 +57,9 @@ actionHandler
   :: forall action to
    . (SingI to, SingI action)
   => ActionInput action
-  -> Op Todo (AllState Todo TodoList) IO (Maybe (ActionOutput action)) to (Action action to)
+  -> Op Todo AllSt IO (Maybe (ActionOutput action)) to (Action action to)
 actionHandler input = I.do
-  liftm $ putSt @action (sing @action) (InternalSt $ Left input)
+  liftm $ putSt @action (sing @action) (ActionVal $ Left input)
   actionHandler'
 
 mainHandler :: Op' Exit Main

@@ -17,6 +17,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 module Todo.Common where
 
@@ -25,33 +26,30 @@ import Control.Exception
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State qualified as S
 import Data.Data
-import Data.Dependent.Map (DMap)
-import Data.Dependent.Map qualified as D
 import Data.Singletons.Base.TH
+import Graphics.UI.Threepenny (Element, UI, Window, runUI)
 import TypedFsm
 
-type family InterSt (v :: ps)
-
-newtype InternalSt ps v = InternalSt (InterSt v)
-
-type InternalStMap ps = DMap (Sing @ps) (InternalSt ps)
-
-data AllState ps state = AllState
+data AllState ps state otherState = AllState
   { _allState :: state
-  , _allInternalStMap :: (InternalStMap ps)
+  , _allOtherState :: otherState
   }
 
-data StateRef ps state = StateRef
+data StateRef ps state otherState = StateRef
   { stateRef :: TVar state
-  , internalStMapRef :: TVar (InternalStMap ps)
+  , otherStateRef :: TVar otherState
   , fsmStRef :: TVar (SomeSing ps)
   , anyMsgTChan :: TChan (AnyMsg ps)
   }
 
-newStateRef :: Sing (t :: ps) -> state -> IO (StateRef ps state)
-newStateRef sst state = do
+newStateRef
+  :: Sing (t :: ps)
+  -> state
+  -> otherState
+  -> IO (StateRef ps state otherState)
+newStateRef sst state otherState = do
   a <- newTVarIO state
-  b <- newTVarIO D.empty
+  b <- newTVarIO otherState
   c <- newTVarIO (SomeSing sst)
   d <- newTChanIO
   pure (StateRef a b c d)
@@ -61,13 +59,13 @@ data UMsg = UMsg
 
 runHandler
   :: (SingKind ps, SEq ps)
-  => StateRef ps state
-  -> Result ps (UnexpectMsg ps) (S.StateT (AllState ps state) IO) a
+  => StateRef ps state otherState
+  -> Result ps (UnexpectMsg ps) (S.StateT (AllState ps state otherState) IO) a
   -> IO a
 runHandler
   stRef@StateRef
     { stateRef
-    , internalStMapRef
+    , otherStateRef
     , fsmStRef
     , anyMsgTChan
     }
@@ -80,7 +78,7 @@ runHandler
       anyMsg <- atomically $ readTChan anyMsgTChan
       (state', internalStMap) <- atomically $ do
         st' <- readTVar stateRef
-        ist <- readTVar internalStMapRef
+        ist <- readTVar otherStateRef
         pure (st', ist)
       (res, AllState a b) <-
         S.runStateT
@@ -93,5 +91,41 @@ runHandler
           (AllState state' internalStMap)
       atomically $ do
         writeTVar stateRef a
-        writeTVar internalStMapRef b
+        writeTVar otherStateRef b
       runHandler stRef res
+
+type family RenderOutVal (t :: ps)
+
+type RenderSt ps state otherState =
+  forall (t :: ps)
+   . Sing t
+  -> (TChan (AnyMsg ps), otherState, state, Window)
+  -> UI ps t (Maybe (Element, IO (RenderOutVal t)))
+
+sendSomeMsg :: TChan (AnyMsg ps) -> Sing t -> SomeMsg ps t -> UI ps t ()
+sendSomeMsg tchan sfrom (SomeMsg sto msg) =
+  liftIO $ atomically $ writeTChan tchan (AnyMsg sfrom sto msg)
+
+renderLoop
+  :: forall ps state otherState t
+   . (SEq ps)
+  => RenderSt ps state otherState
+  -> StateRef ps state otherState
+  -> Window
+  -> Sing (t :: ps)
+  -> IO ()
+renderLoop
+  renderStFun
+  ref@StateRef{fsmStRef, otherStateRef, stateRef, anyMsgTChan}
+  window
+  sst = do
+    otherSt <- readTVarIO otherStateRef
+    state <- readTVarIO stateRef
+    runUI window $ renderStFun sst (anyMsgTChan, otherSt, state, window)
+
+    (SomeSing st) :: SomeSing ps <- atomically $ do
+      SomeSing rsst <- readTVar fsmStRef
+      case rsst %== sst of
+        STrue -> retry
+        SFalse -> pure (SomeSing rsst)
+    renderLoop renderStFun ref window st

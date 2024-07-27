@@ -20,8 +20,8 @@
 
 module Todo.Type where
 
-import Control.Concurrent.STM
 import Control.Lens (makeLenses)
+import Data.Dependent.Map (DMap)
 import Data.GADT.Compare (GCompare (..), GEq (..))
 import Data.IntMap (IntMap)
 import Data.Singletons.Base.TH
@@ -77,15 +77,15 @@ type instance ActionOutput Modify = (Int, Entity)
 type instance ActionInput Add = ()
 type instance ActionOutput Add = Entity
 
+newtype ActionVal ps v = ActionVal (Either (ActionInput v) (ActionOutput v))
+
+type ActionStMap ps = DMap (Sing @ps) (ActionVal ps)
+
 instance GEq STodo where
   geq = testEquality
 
 instance GCompare STodo where
   gcompare = sOrdToGCompare
-
-type instance
-  InterSt (s :: Todo) =
-    Either (ActionInput s) (ActionOutput s)
 
 data Entity = Entity
   { _todoType :: TodoType
