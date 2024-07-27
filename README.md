@@ -1,123 +1,127 @@
-# 尝试将typed-fsm与GUI结合，产生了意想不到的抽象组合
+# Try to combine typed-fsm with GUI to produce unexpected abstract combinations
 
-本文需要你对typed-fsm有所了解，如果你不了解typed-fsm，可以看看我写的介绍typed-fsm的文章。
+This article requires you to have some understanding of typed-fsm. If you don’t know typed-fsm, you can take a look at the article I wrote about typed-fsm.
 
-# 核心想法
-让我们以一个TodoList的gui项目为例：
+[Code](https://github.com/sdzx-1/typed-gui/tree/demo)
+
+# Core idea
+Let’s take a TodoList gui project as an example:
+
 ![origin](data/origin.png)
 
-这里的每个状态都代表了一个页面：
+Each state here represents a page:
 
-Main 代表显示todolist内容主页面
+Main represents the main page showing the todolist content
 
-AreYouSure 代表选择Yes或者No的页面
+AreYouSure represents the page for selecting Yes or No
 
-Modify 代表修改某一条todo的页面
+Modify represents the page for modifying a todo
 
-Add 表示添加一条todo的页面·
+Add represents the page for adding a todo
 
-Exit 代表退出
+Exit represents exit
 
-每一个箭头代表一个消息
+Each arrow represents a message
 
-### 整体的运行框架如下：
+### The overall operating framework is as follows:
+
 ![framewrok](data/framework.png)
 
-右侧的状态机根据接收到的消息改变状态机的状态，同时执行一些内部操作，这些动作都会改变中间状态的变化。
+The state machine on the right changes the state of the state machine according to the received message, and performs some internal operations at the same time. These actions will change the changes in the intermediate state.
 
-左侧的UI部分检测中间状态的变化，并根据中间的状态构建新的UI界面。
+The UI part on the left detects the changes in the intermediate state and builds a new UI interface based on the intermediate state.
 
-整体结构就是如此简单！
+The overall structure is so simple!
 
-UI 部分使用的是修改后的[threepenny-gui](https://github.com/sdzx-1/threepenny-gui), 主要的改动是将原来的(UI a)修改为(UI ps (t::ps) a)。这样做的是为让on注册的事件中包含状态机目前的状态，这样能保证当UI界面触发事件时，向状态机发送正确的消息。
+The UI part uses the modified [threepenny-gui](https://github.com/sdzx-1/threepenny-gui), the main change is to change the original (UI a) to (UI ps (t::ps) a). This is done to make the event registered by on contain the current state of the state machine, so that when the UI interface triggers an event, the correct message is sent to the state machine.
 ```haskell
 on :: (element -> Event a) -> element -> (a -> UI ps t void) -> UI ps t ()
 on f x = void . onEvent (f x)
 ```
 
-OK，核心的想法已经解释完毕。下面我将解释在todoList这个具体例子中产生的意想不到的抽象组合
-# 意想不到的抽象组合
+OK, the core idea has been explained. Next, I will explain the unexpected abstract combination generated in the specific example of todoList
+# Unexpected abstract combination
 
-让我们回到这张图片：
+Let's go back to this picture:
 ![origin](data/origin.png)
-可以发现AreYouSure出现了多次，并且Modify，Add的工作模式相同。
-于是我们可以将这两个模式提取出来。
+It can be found that AreYouSure appears multiple times, and Modify and Add work in the same mode.
+So we can extract these two patterns.
 ![two](data/two.png)
-注意这里在Action中甚至复用了AreYouSure的状态。
+Note that the AreYouSure state is even reused in Action.
 
-对于Action甚至有通用的处理函数
+There is even a generic handler for Action
 ```haskell
 actionHandler'
-  :: forall action to
-   . (SingI to, SingI action)
-  => Op Todo (AllState Todo TodoList) IO (Maybe (ActionOutput action)) to (Action action to)
+:: forall action to
+. (SingI to, SingI action)
+=> Op Todo (AllState Todo TodoList) IO (Maybe (ActionOutput action)) to (Action action to)
 actionHandler' =
-  getInput I.>>= \case
-    SureAction val ->
-      getInput I.>>= \case
-        Yes -> returnAt (Just val)
-        No -> I.do
-          liftm $ putSt @action (sing @action) (InternalSt $ Right val)
-          actionHandler'
-    ExitAction -> returnAt Nothing
+getInput I.>>= \case
+SureAction val ->
+getInput I.>>= \case
+Yes -> returnAt (Just val)
+No -> I.do
+liftm $ putSt @action (sing @action) (InternalSt $ Right val)
+actionHandler'
+ExitAction -> returnAt Nothing
 
 ```
 
-于是我们新的设计如下：
+So our new design is as follows:
 ![new](data/new.png)
-这真是巨大的简化！！！
+This is a huge simplification! ! !
 
-状态机的定义如下：
+The state machine is defined as follows:
 ```haskell
 $( singletons
-    [d|
-      data Todo
-        = Main
-        | Add
-        | Delete
-        | Modify
-        | Exit
-        | Action Todo Todo
-        | AreYouSure Todo Todo
-        deriving (Show, Eq, Ord)
-      |]
- )
+[d|
+data Todo
+= Main
+| Add
+| Delete
+| Modify
+| Exit
+| Action Todo Todo
+| AreYouSure Todo Todo
+deriving (Show, Eq, Ord)
+|]
+)
 
 ```
 
-状态转移消息如下：
+The state transfer message is as follows:
 ```haskell
 instance StateTransMsg Todo where
-  data Msg Todo form to where
-    Yes :: Msg Todo (AreYouSure from to) to
-    No :: Msg Todo (AreYouSure from to) from
-    ------------
-    ExitAction :: Msg Todo (Action action from) from
-    SureAction
-      :: ActionOutput action
-      -> Msg
-          Todo
-          (Action action from)
-          (AreYouSure (Action action from) from)
-    --------------
-    EnterAdd
-      :: ActionInput Add
-      -> Msg Todo Main (Action Add Main)
-    EnterModify
-      :: ActionInput Modify
-      -> Msg Todo Main (Action Modify Main)
-    DeleteOne
-      :: Int
-      -> Msg Todo Main (AreYouSure Main Main)
-    -----------------
-    IsExitTodo :: Msg Todo Main (AreYouSure Main Exit)
-    ExitTodo :: Msg Todo Main Exit
+data Msg Todo form to where
+Yes :: Msg Todo (AreYouSure from to) to
+No :: Msg Todo (AreYouSure from to) from
+------------
+ExitAction :: Msg Todo (Action action from) from
+SureAction
+:: ActionOutput action
+-> Msg
+Todo
+(Action action from)
+(AreYouSure (Action action from) from)
+--------------
+EnterAdd
+:: ActionInput Add
+-> Msg Todo Main (Action Add Main)
+EnterModify
+:: ActionInput Modify
+-> Msg Todo Main (Action Modify Main)
+DeleteOne
+:: Int
+-> Msg Todo Main (AreYouSure Main Main)
+-----------------
+IsExitTodo :: Msg Todo Main (AreYouSure Main Exit)
+ExitTodo :: Msg Todo Main Exit
 ```
-# 总结
-[代码在这里](https://github.com/sdzx-1/typed-gui/tree/demo)
+# Summary
+[Code](https://github.com/sdzx-1/typed-gui/tree/demo)
 
-一个简单的todoList的例子，似乎让我看到了将typed-fsm与GUI结合在一起的巨大潜力。
+A simple todoList example seems to make me see the great potential of combining typed-fsm with GUI.
 
-这种意想不到的组合让我非常惊讶！
+This unexpected combination really surprised me!
 
-有人对基于这种方式构建GUI感兴趣的吗？
+Is anyone interested in building a GUI based on this approach?
