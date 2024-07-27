@@ -162,23 +162,22 @@ renderLoop
   ref@StateRef{fsmStRef, internalStMapRef, stateRef, anyMsgTChan}
   window
   sst = do
+    internalSt <- readTVarIO internalStMapRef
+    state <- readTVarIO stateRef
+    runUI window $ renderSt sst (anyMsgTChan, internalSt, state, window)
+
     (SomeSing st) :: SomeSing ps <- atomically $ do
       SomeSing rsst <- readTVar fsmStRef
       case rsst %== sst of
         STrue -> retry
         SFalse -> pure (SomeSing rsst)
-    internalSt <- readTVarIO internalStMapRef
-    state <- readTVarIO stateRef
-    runUI window $ renderSt st (anyMsgTChan, internalSt, state, window)
     renderLoop ref window st
 
 setup :: TodoList -> Op' Exit Main -> Window -> UI Todo Main ()
 setup state op' w = do
-  nsRef@StateRef{anyMsgTChan} <-
-    liftIO $ newStateRef SMain state
+  nsRef@StateRef{} <- liftIO $ newStateRef SMain state
   liftIO $ forkIO $ void $ runHandler nsRef (Cont $ SomeOperate SMain op')
   liftIO $ forkIO $ void $ renderLoop nsRef w SMain
-  renderSt SMain (anyMsgTChan, D.empty, state, w)
   pure ()
 
 main :: IO ()
