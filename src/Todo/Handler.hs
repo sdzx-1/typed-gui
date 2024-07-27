@@ -51,6 +51,7 @@ actionHandler' =
         No -> I.do
           liftm $ putSt @action sing (ActionVal $ Right val)
           actionHandler'
+    SubAction val -> returnAt (Just val)
     ExitAction -> returnAt Nothing
 
 actionHandler

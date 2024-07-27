@@ -80,7 +80,7 @@ renderSt sst resource@(tchan, otherSt, (TodoList _ entMap), w) = case sst of
   SAction saction sfrom -> do
     pure w # set title ("Action " ++ show saction)
     Just (actPage, uiVal) <- liftIO $ runUI w $ renderSt saction resource
-    subButton <- UI.button # set UI.text "submit!"
+    subButton <- UI.button # set UI.text "submit! need confirmation"
     on UI.click subButton $
       ( \_ -> do
           val <- liftIO uiVal
@@ -89,10 +89,20 @@ renderSt sst resource@(tchan, otherSt, (TodoList _ entMap), w) = case sst of
               (SAreYouSure sst sfrom)
               (SureAction val)
       )
+
+    subButton1 <- UI.button # set UI.text "submit! Don't need confirmation"
+    on UI.click subButton1 $
+      ( \_ -> do
+          val <- liftIO uiVal
+          sendSomeMsg tchan sst $
+            SomeMsg
+              sfrom
+              (SubAction val)
+      )
     backButton <- UI.button # set UI.text "back"
     on UI.click backButton $
       (\_ -> sendSomeMsg tchan sst $ SomeMsg sfrom (ExitAction))
-    getBody w # set children [actPage, subButton, backButton]
+    getBody w # set children [actPage, subButton, subButton1, backButton]
     pure Nothing
   SAdd -> do
     case D.lookup SAdd otherSt of

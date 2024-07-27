@@ -58,6 +58,13 @@ instance StateTransMsg Todo where
           Todo
           (Action action from)
           (AreYouSure (Action action from) from)
+
+    SubAction
+      :: ActionOutput action
+      -> Msg
+          Todo
+          (Action action from)
+          from
     --------------
     EnterAdd
       :: ActionInput Add
