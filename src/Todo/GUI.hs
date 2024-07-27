@@ -25,7 +25,11 @@ import Control.Concurrent.STM
 import Control.Monad
 import Data.Dependent.Map qualified as D
 import Data.IntMap qualified as IntMap
+import Data.Maybe (fromJust)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Singletons
+import Data.Traversable (for)
 import GHC.Conc
 import Graphics.UI.Threepenny qualified as UI
 import Graphics.UI.Threepenny.Core
@@ -66,7 +70,15 @@ renderSt sst resource@(tchan, otherSt, (TodoList _ entMap), w) = case sst of
     pure w # set title "Main"
     addButton <- UI.button # set UI.text "Add"
     on UI.click addButton $ \_ -> sendSomeMsg tchan SMain $ SomeMsg sing (EnterAdd ())
-    cc <- column $ map (mkEntity tchan) (IntMap.toList entMap) ++ [element addButton]
+    delButton <- UI.button # set UI.text "DeleteSome"
+    on UI.click delButton $ \_ ->
+      sendSomeMsg tchan SMain $ SomeMsg sing (EnterDeleteList (IntMap.keys entMap))
+    cc <-
+      column $
+        map (mkEntity tchan) (IntMap.toList entMap)
+          ++ [ element delButton
+             , element addButton
+             ]
     getBody w # set children [cc]
     pure Nothing
   SAreYouSure va vb -> do
@@ -147,11 +159,44 @@ renderSt sst resource@(tchan, otherSt, (TodoList _ entMap), w) = case sst of
                 descV' <- get UI.value txtCon
                 pure (i', (Entity typeV' statusV' descV'))
         pure $ Just $ (tdiv, getVal)
+  SDelete -> do
+    case D.lookup SDelete otherSt of
+      Nothing -> error "np"
+      Just (ActionVal ls') -> do
+        let (ls, checkSet) = fromActOutDelete ls'
+        checkBoxList <- do
+          for ls $ \i -> do
+            checkBox <-
+              UI.input
+                # set UI.type_ "checkbox"
+                # set UI.value (show i)
+                # set UI.checked (if i `Set.member` checkSet then True else False)
+            lab <- UI.li # set text (show $ fromJust $ IntMap.lookup i entMap)
+            pure (checkBox, row [element checkBox, element lab])
+        let (refs, els) = unzip checkBoxList
+        ee <- column els
+        let getVal = do
+              runUI w $
+                concat
+                  <$> for
+                    refs
+                    ( \ref -> do
+                        v1 <- get UI.checked ref
+                        v2 <- read @Int <$> get UI.value ref
+                        if v1
+                          then pure [v2]
+                          else pure []
+                    )
+        pure (Just (ee, ((ls,) <$> getVal)))
   v -> error (show v)
 
 fromEitherBoth :: Either a a -> a
 fromEitherBoth (Left a) = a
 fromEitherBoth (Right a) = a
+
+fromActOutDelete :: Either [Int] ([Int], [Int]) -> ([Int], Set Int)
+fromActOutDelete (Left a) = (a, Set.empty)
+fromActOutDelete (Right (a, ls)) = (a, Set.fromList ls)
 
 setup :: TodoList -> Op' Exit Main -> Window -> UI Todo Main ()
 setup state op' w = do

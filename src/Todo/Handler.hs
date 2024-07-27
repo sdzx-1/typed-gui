@@ -24,6 +24,7 @@ import Control.Lens (at, use)
 import Control.Lens.Setter ((%=), (.=))
 import Control.Monad.State
 import Data.Dependent.Map qualified as DMap
+import Data.Foldable (for_)
 import Data.IFunctor (At (..), returnAt)
 import Data.IFunctor qualified as I
 import Data.Singletons
@@ -85,6 +86,14 @@ mainHandler = I.do
       liftm $ case output of
         Nothing -> pure ()
         Just (i', et) -> allState . entityList . at i' .= Just et
+      mainHandler
+    EnterDeleteList input -> I.do
+      At output <- actionHandler input
+      liftm $ case output of
+        Nothing -> pure ()
+        Just (_, ls) ->
+          for_ ls $ \i' ->
+            allState . entityList . at i' .= Nothing
       mainHandler
     IsExitTodo ->
       getInput I.>>= \case

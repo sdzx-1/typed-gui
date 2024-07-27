@@ -72,6 +72,9 @@ instance StateTransMsg Todo where
     EnterModify
       :: ActionInput Modify
       -> Msg Todo Main (Action Modify Main)
+    EnterDeleteList
+      :: ActionInput Delete
+      -> Msg Todo Main (Action Delete Main)
     DeleteOne
       :: Int
       -> Msg Todo Main (AreYouSure Main Main)
@@ -83,6 +86,8 @@ type instance ActionInput Modify = (Int, Entity)
 type instance ActionOutput Modify = (Int, Entity)
 type instance ActionInput Add = ()
 type instance ActionOutput Add = Entity
+type instance ActionInput Delete = [Int]
+type instance ActionOutput Delete = ([Int], [Int])
 
 newtype ActionVal ps v = ActionVal (Either (ActionInput v) (ActionOutput v))
 
