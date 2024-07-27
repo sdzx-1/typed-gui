@@ -147,7 +147,7 @@ setup :: TodoList -> Op' Exit Main -> Window -> UI Todo Main ()
 setup state op' w = do
   nsRef@StateRef{} <- liftIO $ newStateRef SMain state D.empty
   liftIO $ forkIO $ void $ runHandler nsRef (Cont $ SomeOperate SMain op')
-  liftIO $ forkIO $ void $ renderLoop renderSt nsRef w SMain
+  liftIO $ forkIO $ void $ renderLoopOnlySt renderSt nsRef w SMain state D.empty
   pure ()
 
 main :: IO ()

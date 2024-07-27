@@ -106,26 +106,61 @@ sendSomeMsg :: TChan (AnyMsg ps) -> Sing t -> SomeMsg ps t -> UI ps t ()
 sendSomeMsg tchan sfrom (SomeMsg sto msg) =
   liftIO $ atomically $ writeTChan tchan (AnyMsg sfrom sto msg)
 
+type TestEqForState state = state -> state -> Bool
+type TestEqForOtherState ps otherState = forall (t :: ps). Sing t -> otherState -> otherState -> Bool
+
 renderLoop
+  :: forall ps state otherState t
+   . (SEq ps)
+  => TestEqForState state
+  -> TestEqForOtherState ps otherState
+  -> RenderSt ps state otherState
+  -> StateRef ps state otherState
+  -> Window
+  -> Sing (t :: ps)
+  -> state
+  -> otherState
+  -> IO ()
+renderLoop
+  testEqForState
+  testEqForOtherState
+  renderStFun
+  ref@StateRef{fsmStRef, otherStateRef, stateRef, anyMsgTChan}
+  window
+  sst
+  state
+  otherState = do
+    runUI window $ renderStFun sst (anyMsgTChan, otherState, state, window)
+    (SomeSing sst', state', otherState') <- atomically $ do
+      srsst@(SomeSing sst') <- readTVar fsmStRef
+      state' <- readTVar stateRef
+      otherState' <- readTVar otherStateRef
+      let res = (srsst, state', otherState')
+      case sst' %== sst of
+        SFalse -> pure res
+        STrue ->
+          if testEqForState state state'
+            && testEqForOtherState sst otherState otherState'
+            then retry
+            else pure res
+    renderLoop
+      testEqForState
+      testEqForOtherState
+      renderStFun
+      ref
+      window
+      sst'
+      state'
+      otherState'
+
+renderLoopOnlySt
   :: forall ps state otherState t
    . (SEq ps)
   => RenderSt ps state otherState
   -> StateRef ps state otherState
   -> Window
   -> Sing (t :: ps)
+  -> state
+  -> otherState
   -> IO ()
-renderLoop
-  renderStFun
-  ref@StateRef{fsmStRef, otherStateRef, stateRef, anyMsgTChan}
-  window
-  sst = do
-    otherSt <- readTVarIO otherStateRef
-    state <- readTVarIO stateRef
-    runUI window $ renderStFun sst (anyMsgTChan, otherSt, state, window)
-
-    (SomeSing st) :: SomeSing ps <- atomically $ do
-      SomeSing rsst <- readTVar fsmStRef
-      case rsst %== sst of
-        STrue -> retry
-        SFalse -> pure (SomeSing rsst)
-    renderLoop renderStFun ref window st
+renderLoopOnlySt = renderLoop (\_ _ -> True) (\_ _ _ -> True)
