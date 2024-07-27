@@ -49,7 +49,7 @@ actionHandler' =
       getInput I.>>= \case
         Yes -> returnAt (Just val)
         No -> I.do
-          liftm $ putSt @action (sing @action) (ActionVal $ Right val)
+          liftm $ putSt @action sing (ActionVal $ Right val)
           actionHandler'
     ExitAction -> returnAt Nothing
 
@@ -59,7 +59,7 @@ actionHandler
   => ActionInput action
   -> Op Todo AllSt IO (Maybe (ActionOutput action)) to (Action action to)
 actionHandler input = I.do
-  liftm $ putSt @action (sing @action) (ActionVal $ Left input)
+  liftm $ putSt @action sing (ActionVal $ Left input)
   actionHandler'
 
 mainHandler :: Op' Exit Main
@@ -81,11 +81,10 @@ mainHandler = I.do
         No -> mainHandler
     EnterModify input -> I.do
       At output <- actionHandler input
-      case output of
-        Nothing -> mainHandler
-        Just (i', et) -> I.do
-          liftm (allState . entityList . at i' .= Just et)
-          mainHandler
+      liftm $ case output of
+        Nothing -> pure ()
+        Just (i', et) -> allState . entityList . at i' .= Just et
+      mainHandler
     IsExitTodo ->
       getInput I.>>= \case
         Yes -> returnAt ()
