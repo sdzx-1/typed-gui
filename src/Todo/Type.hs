@@ -21,15 +21,12 @@
 module Todo.Type where
 
 import Control.Concurrent.STM
-import Control.Exception
 import Control.Lens (makeLenses)
-import Data.Data
-import Data.Dependent.Map (DMap)
-import Data.Dependent.Map qualified as D
 import Data.GADT.Compare (GCompare (..), GEq (..))
 import Data.IntMap (IntMap)
 import Data.Singletons.Base.TH
 import Data.Type.Equality (TestEquality (..))
+import Todo.Common
 import TypedFsm
 
 $( singletons
@@ -86,20 +83,9 @@ instance GEq STodo where
 instance GCompare STodo where
   gcompare = sOrdToGCompare
 
-type family InterSt (v :: ps)
-
 type instance
   InterSt (s :: Todo) =
     Either (ActionInput s) (ActionOutput s)
-
-newtype InternalSt ps v = InternalSt (InterSt v)
-
-type InternalStMap ps = DMap (Sing @ps) (InternalSt ps)
-
-data AllState ps state = AllState
-  { _allState :: state
-  , _allInternalStMap :: (InternalStMap ps)
-  }
 
 data Entity = Entity
   { _todoType :: TodoType
@@ -123,24 +109,6 @@ data TodoList = TodoList
   { _currIndex :: Int
   , _entityList :: IntMap Entity
   }
-
-data StateRef ps state = StateRef
-  { stateRef :: TVar state
-  , internalStMapRef :: TVar (InternalStMap ps)
-  , fsmStRef :: TVar (SomeSing ps)
-  , anyMsgTChan :: TChan (AnyMsg ps)
-  }
-
-newStateRef :: Sing (t :: ps) -> state -> IO (StateRef ps state)
-newStateRef sst state = do
-  a <- newTVarIO state
-  b <- newTVarIO D.empty
-  c <- newTVarIO (SomeSing sst)
-  d <- newTChanIO
-  pure (StateRef a b c d)
-
-data UMsg = UMsg
-  deriving (Typeable, Show, Exception)
 
 makeLenses ''Entity
 makeLenses ''TodoList

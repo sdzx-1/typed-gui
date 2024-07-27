@@ -20,17 +20,14 @@
 
 module Todo.Handler where
 
-import Control.Concurrent.STM
-import Control.Exception
 import Control.Lens (at, use)
 import Control.Lens.Setter ((%=), (.=))
 import Control.Monad.State
-import qualified Control.Monad.State as S
-import qualified Data.Dependent.Map as DMap
-import Data.Eq.Singletons
+import Data.Dependent.Map qualified as DMap
 import Data.IFunctor (At (..), returnAt)
-import qualified Data.IFunctor as I
+import Data.IFunctor qualified as I
 import Data.Singletons
+import Todo.Common
 import Todo.Type
 import TypedFsm
 
@@ -99,40 +96,3 @@ mainHandler = I.do
         Yes -> returnAt ()
         No -> mainHandler
     ExitTodo -> returnAt ()
-
-runHandler
-  :: (SingKind ps, SEq ps)
-  => StateRef ps state
-  -> Result ps (UnexpectMsg ps) (S.StateT (AllState ps state) IO) a
-  -> IO a
-runHandler
-  stRef@StateRef
-    { stateRef
-    , internalStMapRef
-    , fsmStRef
-    , anyMsgTChan
-    }
-  result = case result of
-    Finish a -> pure a
-    ErrorInfo (UnexpectMsg _) -> throwIO UMsg
-    Cont sop@(SomeOperate stsing op) -> do
-      let st = getSomeOperateSing sop
-      atomically $ writeTVar fsmStRef $ SomeSing st
-      anyMsg <- atomically $ readTChan anyMsgTChan
-      (state', internalStMap) <- atomically $ do
-        st' <- readTVar stateRef
-        ist <- readTVar internalStMapRef
-        pure (st', ist)
-      (res, AllState a b) <-
-        S.runStateT
-          ( runOperate
-              (IgnoreAndTrace (\_ -> liftIO $ putStrLn "recive unexpect msg!!"))
-              [anyMsg]
-              stsing
-              op
-          )
-          (AllState state' internalStMap)
-      atomically $ do
-        writeTVar stateRef a
-        writeTVar internalStMapRef b
-      runHandler stRef res

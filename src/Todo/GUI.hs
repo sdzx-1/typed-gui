@@ -29,6 +29,7 @@ import Data.Singletons
 import GHC.Conc
 import Graphics.UI.Threepenny qualified as UI
 import Graphics.UI.Threepenny.Core
+import Todo.Common
 import Todo.Handler
 import Todo.Type
 import TypedFsm

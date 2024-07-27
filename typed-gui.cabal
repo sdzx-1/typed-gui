@@ -62,6 +62,7 @@ library
     exposed-modules:  Todo.Type
                    ,  Todo.Handler
                    ,  Todo.GUI
+                   ,  Todo.Common
 
     -- Modules included in this library but not exported.
     -- other-modules:
