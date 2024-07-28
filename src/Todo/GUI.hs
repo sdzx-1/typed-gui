@@ -167,8 +167,8 @@ renderSt sst resource@(tchan, otherSt, (TodoList _ entMap), w) = case sst of
                 # set UI.type_ "checkbox"
                 # set UI.value (show i)
                 # set UI.checked (if i `Set.member` checkSet then True else False)
-            lab <- UI.li # set text (show $ fromJust $ IntMap.lookup i entMap)
-            pure (checkBox, row [element checkBox, element lab])
+            spn <- UI.span #. "checkable" # set text (show $ fromJust $ IntMap.lookup i entMap)
+            pure (checkBox, UI.label #+ [element checkBox, element spn])
         let (refs, els) = unzip checkBoxList
         ee <- column els
         let getVal = do
@@ -201,5 +201,10 @@ main = do
     ( \w -> do
         let state = (TodoList 20 $ IntMap.fromList $ zip [0 ..] testEnts)
         nsRef@StateRef{} <- liftIO $ newStateRef SMain state D.empty
+        getHead w
+          #+ [ UI.link
+                # set UI.rel "stylesheet"
+                # set UI.href "https://cdn.jsdelivr.net/npm/picnic"
+             ]
         uiSetup nsRef renderSt (Cont $ SomeOperate SMain mainHandler) w
     )
