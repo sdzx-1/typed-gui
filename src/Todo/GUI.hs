@@ -21,7 +21,7 @@
 
 module Todo.GUI where
 
-import Control.Concurrent.STM
+import Control.Concurrent
 import Control.Monad
 import Data.Dependent.Map qualified as D
 import Data.IntMap qualified as IntMap
@@ -30,7 +30,6 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Singletons
 import Data.Traversable (for)
-import GHC.Conc
 import Graphics.UI.Threepenny qualified as UI
 import Graphics.UI.Threepenny.Core
 import Todo.Common
@@ -47,10 +46,7 @@ testEnts =
 
 type instance RenderOutVal (t :: Todo) = ActionOutput t
 
-instance MonadFail (UI ps t) where
-  fail s = error s
-
-mkEntity :: TChan (AnyMsg Todo) -> (Int, Entity) -> UI Todo Main Element
+mkEntity :: Chan (AnyMsg Todo) -> (Int, Entity) -> UI Todo Main Element
 mkEntity tchan (i, entity@(Entity ttype status context')) = do
   delButton <- UI.button # set UI.text "Delete"
   on UI.click delButton $ \_ -> sendSomeMsg tchan SMain $ SomeMsg sing (DeleteOne i)
@@ -198,21 +194,12 @@ fromActOutDelete :: Either [Int] ([Int], [Int]) -> ([Int], Set Int)
 fromActOutDelete (Left a) = (a, Set.empty)
 fromActOutDelete (Right (a, ls)) = (a, Set.fromList ls)
 
-setup :: TodoList -> Op' Exit Main -> Window -> UI Todo Main ()
-setup state op' w = do
-  nsRef@StateRef{} <- liftIO $ newStateRef SMain state D.empty
-  liftIO $ forkIO $ void $ runHandler nsRef (Cont $ SomeOperate SMain op')
-  liftIO $ forkIO $ void $ renderLoopOnlySt renderSt nsRef w SMain state D.empty
-  pure ()
-
 main :: IO ()
 main = do
   startGUI
     defaultConfig
-    ( setup
-        ( TodoList 20 $
-            IntMap.fromList $
-              zip [0 ..] testEnts
-        )
-        mainHandler
+    ( \w -> do
+        let state = (TodoList 20 $ IntMap.fromList $ zip [0 ..] testEnts)
+        nsRef@StateRef{} <- liftIO $ newStateRef SMain state D.empty
+        uiSetup nsRef renderSt (Cont $ SomeOperate SMain mainHandler) w
     )

@@ -17,18 +17,31 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 module Todo.Common where
 
-import Control.Concurrent.STM
-import Control.Exception
+import Control.Concurrent (forkIO)
+import Control.Concurrent.Chan
+import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State qualified as S
-import Data.Data
+import Data.IORef
 import Data.Singletons.Base.TH
 import Graphics.UI.Threepenny (Element, UI, Window, runUI)
 import TypedFsm
+
+type R ps state otherState a =
+  Result ps (UnexpectMsg ps) (S.StateT (AllState ps state otherState) IO) a
+
+type family RenderOutVal (t :: ps)
+
+type RenderSt ps state otherState =
+  forall (t :: ps)
+   . Sing t
+  -> (Chan (AnyMsg ps), otherState, state, Window)
+  -> UI ps t (Maybe (Element, IO (RenderOutVal t)))
 
 data AllState ps state otherState = AllState
   { _allState :: state
@@ -36,10 +49,10 @@ data AllState ps state otherState = AllState
   }
 
 data StateRef ps state otherState = StateRef
-  { stateRef :: TVar state
-  , otherStateRef :: TVar otherState
-  , fsmStRef :: TVar (SomeSing ps)
-  , anyMsgTChan :: TChan (AnyMsg ps)
+  { stateRef :: IORef state
+  , otherStateRef :: IORef otherState
+  , fsmStRef :: IORef (SomeSing ps)
+  , anyMsgTChan :: Chan (AnyMsg ps)
   }
 
 newStateRef
@@ -48,37 +61,32 @@ newStateRef
   -> otherState
   -> IO (StateRef ps state otherState)
 newStateRef sst state otherState = do
-  a <- newTVarIO state
-  b <- newTVarIO otherState
-  c <- newTVarIO (SomeSing sst)
-  d <- newTChanIO
+  a <- newIORef state
+  b <- newIORef otherState
+  c <- newIORef (SomeSing sst)
+  d <- newChan
   pure (StateRef a b c d)
 
-data UMsg = UMsg
-  deriving (Typeable, Show, Exception)
-
 runHandler
-  :: (SingKind ps, SEq ps)
+  :: (SEq ps, SingKind ps)
   => StateRef ps state otherState
-  -> Result ps (UnexpectMsg ps) (S.StateT (AllState ps state otherState) IO) a
-  -> IO a
+  -> R ps state otherState a
+  -> IO (R ps state otherState a)
 runHandler
-  stRef@StateRef
+  StateRef
     { stateRef
     , otherStateRef
     , fsmStRef
     , anyMsgTChan
     }
   result = case result of
-    Finish a -> pure a
-    ErrorInfo (UnexpectMsg _) -> throwIO UMsg
-    Cont sop@(SomeOperate stsing op) -> do
-      let st = getSomeOperateSing sop
-      atomically $ writeTVar fsmStRef $ SomeSing st
-      anyMsg <- atomically $ readTChan anyMsgTChan
-      (state', internalStMap) <- atomically $ do
-        st' <- readTVar stateRef
-        ist <- readTVar otherStateRef
+    Finish a -> pure (Finish a)
+    e@(ErrorInfo (UnexpectMsg _)) -> pure e
+    Cont (SomeOperate stsing op) -> do
+      anyMsg <- readChan anyMsgTChan
+      (state', internalStMap) <- do
+        st' <- readIORef stateRef
+        ist <- readIORef otherStateRef
         pure (st', ist)
       (res, AllState a b) <-
         S.runStateT
@@ -89,78 +97,47 @@ runHandler
               op
           )
           (AllState state' internalStMap)
-      atomically $ do
-        writeTVar stateRef a
-        writeTVar otherStateRef b
-      runHandler stRef res
+      writeIORef stateRef a
+      writeIORef otherStateRef b
+      case res of
+        Cont sop -> do
+          let st = getSomeOperateSing sop
+          writeIORef fsmStRef $ SomeSing st
+        _ -> pure ()
+      pure res
 
-type family RenderOutVal (t :: ps)
-
-type RenderSt ps state otherState =
-  forall (t :: ps)
-   . Sing t
-  -> (TChan (AnyMsg ps), otherState, state, Window)
-  -> UI ps t (Maybe (Element, IO (RenderOutVal t)))
-
-sendSomeMsg :: TChan (AnyMsg ps) -> Sing t -> SomeMsg ps t -> UI ps t ()
+sendSomeMsg :: Chan (AnyMsg ps) -> Sing t -> SomeMsg ps t -> UI ps t ()
 sendSomeMsg tchan sfrom (SomeMsg sto msg) =
-  liftIO $ atomically $ writeTChan tchan (AnyMsg sfrom sto msg)
+  liftIO $ writeChan tchan (AnyMsg sfrom sto msg)
 
-type TestEqForState state = state -> state -> Bool
-type TestEqForOtherState ps otherState = forall (t :: ps). Sing t -> otherState -> otherState -> Bool
-
-renderLoop
-  :: forall ps state otherState t
-   . (SEq ps)
-  => TestEqForState state
-  -> TestEqForOtherState ps otherState
+renderAll
+  :: forall ps state otherState
+   . StateRef ps state otherState
   -> RenderSt ps state otherState
-  -> StateRef ps state otherState
   -> Window
-  -> Sing (t :: ps)
-  -> state
-  -> otherState
   -> IO ()
-renderLoop
-  testEqForState
-  testEqForOtherState
+renderAll
+  StateRef{fsmStRef, otherStateRef, stateRef, anyMsgTChan}
   renderStFun
-  ref@StateRef{fsmStRef, otherStateRef, stateRef, anyMsgTChan}
-  window
-  sst
-  state
-  otherState = do
-    runUI window $ renderStFun sst (anyMsgTChan, otherState, state, window)
-    (SomeSing sst', state', otherState') <- atomically $ do
-      srsst@(SomeSing sst') <- readTVar fsmStRef
-      state' <- readTVar stateRef
-      otherState' <- readTVar otherStateRef
-      let res = (srsst, state', otherState')
-      case sst' %== sst of
-        SFalse -> pure res
-        STrue ->
-          if testEqForState state state'
-            && testEqForOtherState sst otherState otherState'
-            then retry
-            else pure res
-    renderLoop
-      testEqForState
-      testEqForOtherState
-      renderStFun
-      ref
-      window
-      sst'
-      state'
-      otherState'
+  window =
+    do
+      (SomeSing sst, state, otherState) <- do
+        srsst <- readIORef fsmStRef
+        state' <- readIORef stateRef
+        otherState' <- readIORef otherStateRef
+        pure (srsst, state', otherState')
+      void $ runUI window $ renderStFun sst (anyMsgTChan, otherState, state, window)
 
-renderLoopOnlySt
-  :: forall ps state otherState t
-   . (SEq ps)
-  => RenderSt ps state otherState
-  -> StateRef ps state otherState
+uiSetup
+  :: (SEq ps, SingKind ps)
+  => StateRef ps state otherState
+  -> RenderSt ps state otherState
+  -> R ps state otherState ()
   -> Window
-  -> Sing (t :: ps)
-  -> state
-  -> otherState
-  -> IO ()
-renderLoopOnlySt = renderLoop (\_ _ -> True) (\_ _ _ -> True)
+  -> UI ps (t :: ps) ()
+uiSetup nsRef renderSt sthandler w = do
+  let loop r = do
+        liftIO $ renderAll nsRef renderSt w
+        res <- liftIO $ runHandler nsRef r
+        loop res
+  void $ liftIO $ forkIO $ void $ loop sthandler

@@ -27,9 +27,7 @@ Each arrow represents a message
 
 ![framewrok](data/framework.png)
 
-The state machine on the right changes the state of the state machine according to the received message, and performs some internal operations at the same time. These actions will change the changes in the intermediate state.
-
-The UI part on the left detects the changes in the intermediate state and builds a new UI interface based on the intermediate state.
+The UI first renders the interface to register the event, the FSM Handler waits for the event to be passed in, and then processes the event. This cycle continues.
 
 The overall structure is so simple!
 
