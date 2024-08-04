@@ -69,12 +69,11 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:    base ^>=4.20.0.0
-                   ,  stm
-                   ,  mtl
-                   ,  typed-fsm
-                   ,  singletons-base
-                   ,  threepenny-gui
-
+                   ,  mtl >= 2.3.1 && < 2.4
+                   ,  singletons-base >= 3.4 && < 3.5
+                   ,  stm >= 2.5.3 && < 2.6
+                   ,  threepenny-gui >= 0.9.4 && < 0.10
+                   ,  typed-fsm >= 0.3.0 && < 0.4
     -- Directories containing source files.
     hs-source-dirs:   src
 
