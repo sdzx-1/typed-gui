@@ -4,7 +4,7 @@
 
 # 核心想法
 让我们以一个TodoList的gui项目为例：
-![origin](data/origin.png)
+![origin](../data/origin.png)
 
 这里的每个状态都代表了一个页面：
 
@@ -21,7 +21,7 @@ Exit 代表退出
 每一个箭头代表一个消息
 
 ### 整体的运行框架如下：
-![framewrok](data/framework.png)
+![framewrok](../data/framework.png)
 
 UI先渲染界面注册事件，FSM Handler等待事件传入，然后处理事件。然后如此循环即可。
 
@@ -37,10 +37,10 @@ OK，核心的想法已经解释完毕。下面我将解释在todoList这个具�
 # 意想不到的抽象组合
 
 让我们回到这张图片：
-![origin](data/origin.png)
+![origin](../data/origin.png)
 可以发现AreYouSure出现了多次，并且Modify，Add的工作模式相同。
 于是我们可以将这两个模式提取出来。
-![two](data/two.png)
+![two](../data/two.png)
 注意这里在Action中甚至复用了AreYouSure的状态。
 
 对于Action甚至有通用的处理函数
@@ -62,7 +62,7 @@ actionHandler' =
 ```
 
 于是我们新的设计如下：
-![new](data/new.png)
+![new](../data/new.png)
 这真是巨大的简化！！！
 
 状态机的定义如下：
@@ -112,7 +112,6 @@ instance StateTransMsg Todo where
     ExitTodo :: Msg Todo Main Exit
 ```
 # 总结
-[代码在这里](https://github.com/sdzx-1/typed-gui/tree/demo)
 
 一个简单的todoList的例子，似乎让我看到了将typed-fsm与GUI结合在一起的巨大潜力。
 

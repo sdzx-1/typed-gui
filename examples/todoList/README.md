@@ -63,7 +63,7 @@ actionHandler'
 ```
 
 So our new design is as follows:
-![new](data/new.png)
+![new](../data/new.png)
 This is a huge simplification! ! !
 
 The state machine is defined as follows:
